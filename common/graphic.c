@@ -253,7 +253,7 @@ void fb_draw_image(int x, int y, fb_image *image, int color) {
 
     int *buf = _begin_draw(x, y, w, h);
     int *dst = buf + y * SCREEN_WIDTH + x;
-    char *src;
+    // char *src;
 
     if (image->color_type == FB_COLOR_RGB_8880) /*lab3: jpg*/
     {
@@ -371,7 +371,7 @@ void fb_draw_circle(int x, int y, int r, int color) {
     int y_upper_bound = y + r >= SCREEN_HEIGHT ? SCREEN_HEIGHT - 1 : y + r;
     for (int i = y_lower_bound; i <= y_upper_bound; ++i) {
         for (int j = x_lower_bound; j <= x_upper_bound; ++j) {
-			int tmp_x = x * 0.8;
+			// int tmp_x = x * 0.8;
             int delta_x = j - x;
             int delta_y = i - y;
 			// delta_x *= 0.8;

@@ -80,7 +80,7 @@ fb_image *fb_read_jpeg_image(char *file)
 	//指定解压数据源
 	FILE *infile;
 	if((infile = fopen(file, "rb")) == NULL){
-		printf("fb_read_jpeg_image: Failed to open file %s", file);
+		printf("fb_read_jpeg_image: Failed to open file %s\n", file);
 		return NULL;
 	}
 	jpeg_stdio_src(&cinfo, infile);
@@ -120,7 +120,8 @@ fb_image *fb_read_jpeg_image(char *file)
 /*================== read a png image ===============*/
 #include <png.h>
 fb_image *fb_read_png_image(char *file)
-{
+{	
+	printf("read file: %s\n", file);
 	fb_image *image=NULL;
 	png_structp png_ptr;
 	png_infop info_ptr;
