@@ -121,16 +121,16 @@ fb_image *fb_read_jpeg_image(char *file)
 #include <png.h>
 fb_image *fb_read_png_image(char *file)
 {	
-	printf("read file: %s\n", file);
+	// printf("read file: %s\n", file);
 	fb_image *image=NULL;
 	png_structp png_ptr;
 	png_infop info_ptr;
 	FILE *fp;
 	
 	fp = fopen(file, "rb");
-	printf("read file: %s\n", file);
+	// printf("read file: %s\n", file);
 	if(fp == NULL) {
-		printf("read file: %s\n", file);
+		// printf("read file: %s\n", file);
 		printf("open png file failed: error %d\n",errno);
 		return NULL;
 	}
