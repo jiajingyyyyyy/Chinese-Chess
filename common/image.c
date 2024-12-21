@@ -128,7 +128,9 @@ fb_image *fb_read_png_image(char *file)
 	FILE *fp;
 	
 	fp = fopen(file, "rb");
+	printf("read file: %s\n", file);
 	if(fp == NULL) {
+		printf("read file: %s\n", file);
 		printf("open png file failed: error %d\n",errno);
 		return NULL;
 	}
