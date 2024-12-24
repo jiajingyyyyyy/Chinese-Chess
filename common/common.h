@@ -13,6 +13,8 @@
 #include <pthread.h>
 
 /*======================== task.c ============================*/
+// appended
+int should_exit = 1;
 /*所有的时间以毫秒为单位*/
 typedef int myTime;
 #define MYTIME_DIFF(a, b) ((myTime)(a) - (myTime)(b))
