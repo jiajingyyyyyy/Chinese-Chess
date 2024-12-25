@@ -24,7 +24,7 @@
 #define Bottom_1_y 325
 #define Bottom_2_y 456
 
-
+int should_exit = 0;
 // 存储棋盘状态和当前回合,board_bak存储棋盘状态，turn_bak存储当前回合（红方或黑方），next指向下一个备份状态。
 struct bak {
 	int board_bak[10][11];
@@ -59,6 +59,7 @@ point global_select = { 0,0 };
 point pre_global_select;
 point board_pos; // 全局变量，存储当前选中的棋子位置
 point pre_board_pos; // 全局变量，存储上一次选中的棋子位置
+point my_ini;
 int win = 0; // 1 0 -1 分别代表红方胜，没分出来胜负，黑方胜
 int from_status; // 是获取起始位置还是终点位置
 int mode = 0; // 输入当前模式，1为双机模式，0为单机模式
@@ -67,7 +68,10 @@ int select_val = 0; // 选中状态
 int distance = 0;
 int regret_trigger; // 悔棋触发
 int state; //表示状态
-int should_exit = 0;
+int ini_first;
+int rec_ini_first;
+int side;
+
 
 point getdrawposition(point a) {
 	point po;
@@ -75,10 +79,12 @@ point getdrawposition(point a) {
 	po.y = 32.5 + 66.5 * (a.y - 1) - 33;
 	return po;
 }
+
+
 point getlogicalposition(point po) {
 	point a;
-	a.x = (int)(po.x - 182) / 66 + 1;
-	a.y = (int)(po.y + 0.5) / 66.5 + 1;
+	a.x = (int)(po.x - 215 +33) / 66 + 1;
+	a.y = (int)(po.y -32.5 + 33) / 66.5 + 1;
 	return a;
 }
 
@@ -93,11 +99,6 @@ void show_select(point a) {
 	printf("*****************************************DEBUG*********************************************: turn: {%d}\n", turn);
 	if (turn == 1) fb_draw_text(50, 50, "红方出棋", 64, RED);
 	else if (turn == -1) fb_draw_text(50, 50, "黑方出棋", 64, BLACK);
-}
-
-void show_press_bottom(int x, int y) {
-	fb_draw_rounded_rect(x, y, 238, 75, BLUE);
-	fb_update();
 }
 
 void show_board() {
@@ -291,6 +292,7 @@ void show_Welcome_Page() {
 	fb_update();
 	printf("**************************DEBUG************************************: welcome_images33333\n");
 	fb_free_image(img);
+
 }
 
 //胜负
@@ -579,16 +581,20 @@ void maintain_roll() {
 }
 // 定义蓝牙传输数据格式，x y坐标用逗号分隔 e.g. 1037,888, 特殊的，如果接受到0，0，说明对面要悔棋
 point parser_bluetooth(char* buf) {
-	for (int i = 0; i < sizeof buf; i++) { // 检查数据合法性，但没有校验位，应该不会出现问题
-		if (buf[i] > '9' || buf[i] < '0' || buf[i] != ',') return (point) { -1, -1 };
-	}
 	point a;
 	int t = 0;
-	while (*buf != ',') t = t * 10 + *buf - '0';
+	char* str = buf;
+	while (*str != ',') {
+		t = t * 10 + *str - '0';
+		str++;
+	}
 	a.x = t;
 	t = 0;
-	buf++;
-	while (*buf != '\0') t = t * 10 + *buf - '0';
+	str++;
+	while (*str != '\0') {
+		t = t * 10 + *str - '0';
+		str++;
+	}
 	a.y = t;
 	return a;
 }
@@ -602,22 +608,49 @@ char* pack_bluetooth(point a) {
 
 static void bluetooth_tty_event_cb(int fd)
 {
-	char buf[128];
-	int n;
+	if (state == 1) {
+		char buf[128];
+		int n;
+		printf("**************************DEBUG************************************: comeinto RECEIVED LY MSS\n");
+		n = myRead_nonblock(fd, buf, sizeof(buf) - 1);
+		if (n <= 0) {
+			printf("close bluetooth tty fd\n");
+			task_delete_file(fd);
+			close(fd);
+			exit(0);
+			return;
+		}
 
-	n = myRead_nonblock(fd, buf, sizeof(buf) - 1);
-	if (n <= 0) {
-		printf("close bluetooth tty fd\n");
-		//task_delete_file(fd);
-		//close(fd);
-		exit(0);
-		return;
+		buf[n] = '\0';
+		printf("bluetooth tty receive \"%s\"\n", buf);
+		global_select = parser_bluetooth(buf);
+		if (win == 0) maintain_roll();
 	}
-
-	buf[n] = '\0';
-	printf("bluetooth tty receive \"%s\"\n", buf);
-	global_select = parser_bluetooth(buf);
-	if (win == 0) maintain_roll();
+	else if (state == 2) {
+		char buf[128];
+		int n;
+		printf("**************************DEBUG************************************: comeinto RECEIVED LY MSS\n");
+		n = myRead_nonblock(fd, buf, sizeof(buf) - 1);
+		buf[n] = '\0';
+		printf("bluetooth tty receive \"%s\"\n", buf);
+		my_ini = parser_bluetooth(buf);
+		rec_ini_first = my_ini.x;
+		if (((ini_first ^ rec_ini_first) & 1) != 1) {
+			srand((unsigned int)ini_first);
+			int random_number = rand() % 2 + 1; // rand() % 2 生成0或1，然后加1得到1或2
+			ini_first = random_number;
+			my_ini.x = my_ini.y = ini_first;
+			char* pkg = pack_bluetooth(my_ini);
+			printf(pkg);
+			myWrite_nonblock(bluetooth_fd, pkg, sizeof pkg);
+			printf("%d,%d", ini_first, rec_ini_first);
+		}
+		else {
+			should_exit = 1;
+			side = ((ini_first & 1) == 1) ? -1 : 1;
+			state = 1;
+		}
+	}
 	return;
 }
 
@@ -639,34 +672,37 @@ static void touch_event_cb(int fd) {
 	type = touch_read(fd, &x, &y, &finger);
 	// x = x * 800 / 1024;
 	// y = y * SCREEN_HEIGHT / 600;
-	if (state == 1) {
+	if (state == 1 ) {
 		switch (type)
 		{
 		case TOUCH_PRESS:
-			printf("TOUCH_PRESS:x=%d,y=%d,finger=%d\n", x, y, finger);
-			pre_global_select = global_select;
-			global_select.x = x;
-			global_select.y = y;
-			int delta_x = global_select.x - pre_global_select.x;
-			int delta_y = global_select.y - pre_global_select.y;
-			printf("******************************DEBUG: ****************************************delta_x=%d,delta_y=%d\n", delta_x, delta_y);
-			if (delta_x * delta_x + delta_y * delta_y < LEAGL_INTERVAL) return;
-			// 悔棋触发
-			if ((x >= REGRET_X) && (x < REGRET_X + REGRET_W) && (y >= REGRET_Y) && (y < REGRET_Y + REGRET_H)) {
-				regret_trigger = 1;
-				printf("*************************************DEBUG: **************************** I am very regret 555555555555555 : (\n");
-				point a;
-				a.x = 0, a.y = 0;
-				char* regert_pkg = pack_bluetooth(a);
-				myWrite_nonblock(bluetooth_fd, regert_pkg, sizeof regert_pkg);
+			if (side == turn || mode == 0) {
+				printf("TOUCH_PRESS:x=%d,y=%d,finger=%d\n", x, y, finger);
+				pre_global_select = global_select;
+				global_select.x = x;
+				global_select.y = y;
+				int delta_x = global_select.x - pre_global_select.x;
+				int delta_y = global_select.y - pre_global_select.y;
+				printf("******************************DEBUG: ****************************************delta_x=%d,delta_y=%d\n", delta_x, delta_y);
+				if (delta_x * delta_x + delta_y * delta_y < LEAGL_INTERVAL) return;
+				// 悔棋触发
+				if ((x >= REGRET_X) && (x < REGRET_X + REGRET_W) && (y >= REGRET_Y) && (y < REGRET_Y + REGRET_H)) {
+					regret_trigger = 1;
+					printf("*************************************DEBUG: **************************** I am very regret 555555555555555 : (\n");
+					point a;
+					a.x = 0, a.y = 0;
+					char* regert_pkg = pack_bluetooth(a);
+					myWrite_nonblock(bluetooth_fd, regert_pkg, sizeof regert_pkg);
+				}
+				// 如果联机模式，发送数据
+				if (mode) {
+					char* pkg = pack_bluetooth(global_select);
+					printf(pkg);
+					myWrite_nonblock(bluetooth_fd, pkg, sizeof pkg);
+				}
+				// 对棋盘进行操作
+				if (win == 0) maintain_roll();
 			}
-			// 如果联机模式，发送数据
-			if (mode) {
-				char* pkg = pack_bluetooth(global_select);
-				myWrite_nonblock(bluetooth_fd, pkg, sizeof pkg);
-			}
-			// 对棋盘进行操作
-			if (win == 0) maintain_roll();
 			break;
 		case TOUCH_MOVE:
 			printf("TOUCH_MOVE：x=%d,y=%d,finger=%d\n", x, y, finger);
@@ -691,16 +727,19 @@ static void touch_event_cb(int fd) {
 			global_select.x = x;
 			global_select.y = y;
 			if ((x >= Bottom_x) && (x < Bottom_x + Welocme_Bottom_W) && (y >= Bottom_1_y) && (y < Bottom_1_y + Welocme_Bottom_H)) {
-				show_press_bottom(Bottom_x, Bottom_1_y);
+				state = 2;
+				point a;
+				a.x = x, a.y = y;
+				ini_first = x;
+				char* regert_pkg = pack_bluetooth(a);
+				myWrite_nonblock(bluetooth_fd, regert_pkg, sizeof regert_pkg);
+
+				mode = 1;
+			}
+			else if ((x >= Bottom_x) && (x < Bottom_x + Welocme_Bottom_W) && (y >= Bottom_2_y) && (y < Bottom_2_y + Welocme_Bottom_H)) {
 				state = 1;
 				should_exit = 1;
 				mode = 0;
-			}
-			else if ((x >= Bottom_x) && (x < Bottom_x + Welocme_Bottom_W) && (y >= Bottom_2_y) && (y < Bottom_2_y + Welocme_Bottom_H)) {
-				show_press_bottom(Bottom_x, Bottom_2_y);
-				state = 1;
-				should_exit = 1;
-				mode = 1;
 			}
 			break;
 		default:
@@ -716,24 +755,26 @@ int main(int argc, char* argv[]) {
 	touch_fd = touch_init("/dev/input/event2");
 	//添加任务, 当touch_fd文件可读时, 会自动调用touch_event_cb函数
 	task_add_file(touch_fd, touch_event_cb);
+
 	show_Welcome_Page();
+	bluetooth_fd = bluetooth_tty_init("/dev/rfcomm0");
+	printf("*************************************DEBUG: **************************** bluetooth_tty_init \n");
+	if (bluetooth_fd == -1) return 0;
+	task_add_file(bluetooth_fd, bluetooth_tty_event_cb);
+	should_exit = 0;
+	printf("请输入当前主机的阵营, 1为红方, -1为黑方\n");
+	printf("请保证两台主机的阵营不同\n");
+
 	task_loop(); // 进入任务循环
 	should_exit = 0;
-	if(mode) {
-		// 双机模式下，输入该主机的阵营，1为红方，-1为黑方，默认红方先出棋
-		printf("请输入当前主机的阵营, 1为红方, -1为黑方\n");
-		printf("请保证两台主机的阵营不同\n");
-		//scanf("%d", &turn);
-	}
+
+
+
 	global_select.x = 0; global_select.y = 0;
 	pre_global_select.x = 0; pre_global_select.y = 0;
 	show_board();
 	show_select(global_select);
-	//if(mode) {
-	//	bluetooth_fd = bluetooth_tty_init("/dev/rfcomm0");
-	//	if(bluetooth_fd == -1) return 0;
-	//	task_add_file(bluetooth_fd, bluetooth_tty_event_cb);
-	//}
+
 	//
 	task_loop(); // 进入任务循环
 	return 0;

@@ -249,7 +249,7 @@ static void _check_and_do_task(void)
 
 void task_loop(void)
 {
-	while(should_exit == 0) {
+	while(should_exit==0) {
 		_check_and_do_task();
 	}
 	return;
