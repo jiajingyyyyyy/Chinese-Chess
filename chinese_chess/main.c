@@ -13,9 +13,7 @@
 #define BLACK   FB_COLOR(0,0,0)
 #define MYBLUE  FB_COLOR(0,120,192)
 #define OK 1
-#define LEAGL_INTERVAL 2000
-#define REGRET_X	(SCREEN_WIDTH-60)
-#define REGRET_Y	0
+#define LEAGL_INTERVAL 1500
 #define REGRET_W	100
 #define REGRET_H	200
 #define Welocme_Bottom_W 238
@@ -71,9 +69,11 @@ int regame_trigger; // 认输触发
 int state; //表示状态
 int ini_first;
 int rec_ini_first;
-int side;
+int side=1;
 int regert_x = 38.5, regret_y = 333;
 int regame_x = 38.25, regame_y = 66;
+int turn_hint_x = 775, turn_hint_y = 180;
+
 
 point getdrawposition(point a) {
 	point po;
@@ -103,6 +103,23 @@ void show_select(point a) {
 	else if (turn == -1) fb_draw_text(50, 50, "黑方出棋", 64, BLACK);
 }
 
+
+void adjust_locaL_para() {
+	if(side == 1 || mode) {
+		regert_x = 38.5, regret_y = 333;
+		regame_x = 38.25, regame_y = 66;
+		turn_hint_x = 775, turn_hint_y = 180;
+		printf("**************************DEBUG adjust_locaL_para ************************************: side == 1\n");
+	}
+	else {
+		regert_x = SCREEN_WIDTH - 38.5 - REGRET_W;
+		regret_y = 66;
+		regame_x = SCREEN_WIDTH - 38.25 - REGRET_W;
+		regame_y = 333;
+		turn_hint_x = -80, turn_hint_y = 180;
+	}
+}
+
 void show_board() {
 	printf("**************************DEBUG************************************: board[j_from][i_from],board[j_to][i_to]\n");
 	for (int i = 1; i < 11; i++) {
@@ -129,6 +146,16 @@ void show_board() {
 	fb_update();
 	img = fb_read_jpeg_image("./test.jpg");
 	fb_draw_image((SCREEN_WIDTH - img->pixel_w) / 2, 0, img, 0);
+	fb_update();
+	if(side == 1) {
+		if (turn == 1) img = fb_read_png_image("./img/red.png");
+		else img = fb_read_png_image("./img/black.png");
+	}
+	else {
+		if (turn == 1) img = fb_read_png_image("./img/rotated_red.png");
+		else img = fb_read_png_image("./img/rotated_black.png");
+	}
+	fb_draw_image(turn_hint_x, turn_hint_y, img, 0);
 	fb_update();
 	fb_free_image(img);
 	for (int i = 1; i < 10; i++) {
@@ -282,6 +309,7 @@ void show_board() {
 		}
 	}
 	if (select_val) show_select(board_pos);
+	
 }
 
 
@@ -614,18 +642,6 @@ char* pack_bluetooth(point a) {
 	sprintf(buf, "%d,%d", a.x, a.y); // 通过sprintf写入buf
 	return buf;
 }
-void adjust_locaL_para() {
-	if(side == 1) {
-		regert_x = 38.5, regret_y = 333;
-		regame_x = 38.25, regame_y = 66;
-	}
-	else {
-		regert_x = SCREEN_WIDTH - 38.5 - REGRET_W;
-		regret_y = 66;
-		regame_x = SCREEN_WIDTH - 38.25 - REGRET_W;
-		regame_y = 333;
-	}
-}
 
 static void bluetooth_tty_event_cb(int fd)
 {
@@ -696,8 +712,12 @@ static int bluetooth_tty_init(const char* dev)
 // 悔棋新增
 void regert_handle(point a) {
 	int x = a.x, y = a.y;
-	if(side == turn) { // 轮到自己走了，才可以悔棋
-		if(x > regert_x && x < regert_x + REGRET_W && y < regret_y && y > regret_y - REGRET_H) {
+
+	printf("*************************************DEBUG: **************************** {a.x: %d,  a.y: %d}\n", a.x, a.y);
+	printf("*************************************DEBUG: **************************** {regert_x: %d,  regret_y: %d}\n", regert_x, regret_y);
+	if(side == turn || mode == 0) { // 轮到自己走了，才可以悔棋
+	printf("*************************************DEBUG: **************************** {side: %d,  turn: %d}\n", side, turn);
+		if(x > regert_x && x < regert_x + REGRET_W && y > regret_y && y < regret_y + REGRET_H) {
 			regret_trigger = 1;
 			printf("*************************************DEBUG: **************************** I am very regret 555555555555555 : (\n");
 			point a;
@@ -712,7 +732,12 @@ void regert_handle(point a) {
 // 认输新增
 void regame_handle (point a) {
 	int x = a.x, y = a.y;
-	if(side == turn && x > regame_x && x < regame_x + REGRET_W && y < regame_y && y > regame_y - REGRET_H) {
+	printf("*************************************DEBUG: **************************** {a.x: %d,  a.y: %d}\n", a.x, a.y);
+	printf("*************************************DEBUG: **************************** {regame_x: %d,  regame_y: %d}\n", regame_x, regame_y);
+	printf("*************************************DEBUG: **************************** {side: %d,  turn: %d}\n", side, turn);
+	printf("*************************************DEBUG: **************************** {mode: %d}\n", mode);
+	printf("*************************************DEBUG: **************************** condition; %d\n", (x > regame_x && x < regame_x + REGRET_W && y > regame_y && y < regame_y + REGRET_H));
+	if((side == turn || mode == 0) && x > regame_x && x < regame_x + REGRET_W && y > regame_y && y < regame_y + REGRET_H) {
 		printf("*************************************DEBUG: **************************** I am loser (\n");
 		regame_trigger = 1;
 		win = -1 * turn;
@@ -818,10 +843,10 @@ int main(int argc, char* argv[]) {
 	task_add_file(touch_fd, touch_event_cb);
 
 	show_Welcome_Page();
-	bluetooth_fd = bluetooth_tty_init("/dev/rfcomm0");
+	// bluetooth_fd = bluetooth_tty_init("/dev/rfcomm0");
 	printf("*************************************DEBUG: **************************** bluetooth_tty_init \n");
-	if (bluetooth_fd == -1) return 0;
-	task_add_file(bluetooth_fd, bluetooth_tty_event_cb);
+	// if (bluetooth_fd == -1) return 0;
+	// task_add_file(bluetooth_fd, bluetooth_tty_event_cb);
 	should_exit = 0;
 	printf("请输入当前主机的阵营, 1为红方, -1为黑方\n");
 	printf("请保证两台主机的阵营不同\n");
@@ -835,7 +860,6 @@ int main(int argc, char* argv[]) {
 	show_board();
 	show_select(global_select);
 
-	//
 	task_loop(); // 进入任务循环
 	return 0;
 }
