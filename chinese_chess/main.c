@@ -16,8 +16,8 @@
 #define LEAGL_INTERVAL 2000
 #define REGRET_X	(SCREEN_WIDTH-60)
 #define REGRET_Y	0
-#define REGRET_W	60
-#define REGRET_H	60
+#define REGRET_W	100
+#define REGRET_H	200
 #define Welocme_Bottom_W 238
 #define Welocme_Bottom_H 75
 #define Bottom_x 355
@@ -67,11 +67,13 @@ int turn = 1;//记录是红方回合还是黑方回合
 int select_val = 0; // 选中状态
 int distance = 0;
 int regret_trigger; // 悔棋触发
+int regame_trigger; // 认输触发
 int state; //表示状态
 int ini_first;
 int rec_ini_first;
 int side;
-
+int regert_x = 38.5, regret_y = 333;
+int regame_x = 38.25, regame_y = 66;
 
 point getdrawposition(point a) {
 	point po;
@@ -114,11 +116,14 @@ void show_board() {
 	img = fb_read_jpeg_image("./img/backround.jpg");
 	fb_draw_image(0, 0, img, 0);
 	fb_free_image(img);
-	img = fb_read_png_image("./img/regame.png");
-	fb_draw_image(38.25, 66, img, 0);
+	if(side == 1) img = fb_read_png_image("./img/regame.png");
+	else img = fb_read_png_image("./img/rotated_regame.png");
+	regame_x = 38.25, regame_y = 66;
+	fb_draw_image(regame_x, regame_y, img, 0);
 	fb_free_image(img);
-	img = fb_read_png_image("./img/wantback.png");
-	fb_draw_image(38.25, 333, img, 0);
+	if(side == 1) img = fb_read_png_image("./img/wantback.png"); // w = 100 ; h = 200
+	else img = fb_read_png_image("./img/rotated_wantback.png");
+	fb_draw_image(regert_x, regret_y, img, 0);
 	fb_free_image(img);
 	//fb_draw_rect(REGRET_X, REGRET_Y, REGRET_W, REGRET_H, RED);
 	fb_update();
@@ -571,6 +576,10 @@ void maintain_roll() {
 		regert();
 		regret_trigger = 0;
 	}
+	if(regame_trigger) {
+		regame_trigger = 0;
+		should_exit = 1;
+	}
 	else {
 		int res = check_identity();
 		printf("-----------------------------DEBUG: res=%d\n", res);
@@ -605,6 +614,18 @@ char* pack_bluetooth(point a) {
 	sprintf(buf, "%d,%d", a.x, a.y); // 通过sprintf写入buf
 	return buf;
 }
+void adjust_locaL_para() {
+	if(side == 1) {
+		regert_x = 38.5, regret_y = 333;
+		regame_x = 38.25, regame_y = 66;
+	}
+	else {
+		regert_x = SCREEN_WIDTH - 38.5 - REGRET_W;
+		regret_y = 66;
+		regame_x = SCREEN_WIDTH - 38.25 - REGRET_W;
+		regame_y = 333;
+	}
+}
 
 static void bluetooth_tty_event_cb(int fd)
 {
@@ -623,7 +644,14 @@ static void bluetooth_tty_event_cb(int fd)
 
 		buf[n] = '\0';
 		printf("bluetooth tty receive \"%s\"\n", buf);
-		global_select = parser_bluetooth(buf);
+		point a;
+		a = parser_bluetooth(buf);
+		if(a.x == 0 && a.y == 0) regret_trigger = 1; // Fix：悔棋触发
+		else if(a.x == -1 && a.y == -1) {
+			regame_trigger = 1;
+			win = -1 * turn;
+		}
+		else global_select = a;
 		if (win == 0) maintain_roll();
 	}
 	else if (state == 2) {
@@ -648,6 +676,7 @@ static void bluetooth_tty_event_cb(int fd)
 		else {
 			should_exit = 1;
 			side = ((ini_first & 1) == 1) ? -1 : 1;
+			adjust_locaL_para(side);
 			state = 1;
 		}
 	}
@@ -662,6 +691,36 @@ static int bluetooth_tty_init(const char* dev)
 		return -1;
 	}
 	return fd;
+}
+
+// 悔棋新增
+void regert_handle(point a) {
+	int x = a.x, y = a.y;
+	if(side == turn) { // 轮到自己走了，才可以悔棋
+		if(x > regert_x && x < regert_x + REGRET_W && y < regret_y && y > regret_y - REGRET_H) {
+			regret_trigger = 1;
+			printf("*************************************DEBUG: **************************** I am very regret 555555555555555 : (\n");
+			point a;
+			a.x = 0, a.y = 0;
+			char* regert_pkg = pack_bluetooth(a);
+			myWrite_nonblock(bluetooth_fd, regert_pkg, sizeof regert_pkg);
+		}  
+	}
+	
+}
+
+// 认输新增
+void regame_handle (point a) {
+	int x = a.x, y = a.y;
+	if(side == turn && x > regame_x && x < regame_x + REGRET_W && y < regame_y && y > regame_y - REGRET_H) {
+		printf("*************************************DEBUG: **************************** I am loser (\n");
+		regame_trigger = 1;
+		win = -1 * turn;
+		a.x = -1, a.y = -1;
+		char* regert_pkg = pack_bluetooth(a);
+		myWrite_nonblock(bluetooth_fd, regert_pkg, sizeof regert_pkg);
+
+	}
 }
 
 // 当监测到触摸事件时，调用此函数
@@ -686,14 +745,16 @@ static void touch_event_cb(int fd) {
 				printf("******************************DEBUG: ****************************************delta_x=%d,delta_y=%d\n", delta_x, delta_y);
 				if (delta_x * delta_x + delta_y * delta_y < LEAGL_INTERVAL) return;
 				// 悔棋触发
-				if ((x >= REGRET_X) && (x < REGRET_X + REGRET_W) && (y >= REGRET_Y) && (y < REGRET_Y + REGRET_H)) {
-					regret_trigger = 1;
-					printf("*************************************DEBUG: **************************** I am very regret 555555555555555 : (\n");
-					point a;
-					a.x = 0, a.y = 0;
-					char* regert_pkg = pack_bluetooth(a);
-					myWrite_nonblock(bluetooth_fd, regert_pkg, sizeof regert_pkg);
-				}
+				// if ((x >= REGRET_X) && (x < REGRET_X + REGRET_W) && (y >= REGRET_Y) && (y < REGRET_Y + REGRET_H)) {
+				// 	regret_trigger = 1;
+				// 	printf("*************************************DEBUG: **************************** I am very regret 555555555555555 : (\n");
+				// 	point a;
+				// 	a.x = 0, a.y = 0;
+				// 	char* regert_pkg = pack_bluetooth(a);
+				// 	myWrite_nonblock(bluetooth_fd, regert_pkg, sizeof regert_pkg);
+				// }
+				regert_handle(global_select);
+				regame_handle(global_select);
 				// 如果联机模式，发送数据
 				if (mode) {
 					char* pkg = pack_bluetooth(global_select);
@@ -767,7 +828,6 @@ int main(int argc, char* argv[]) {
 
 	task_loop(); // 进入任务循环
 	should_exit = 0;
-
 
 
 	global_select.x = 0; global_select.y = 0;
